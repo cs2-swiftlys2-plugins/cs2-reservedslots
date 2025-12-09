@@ -60,17 +60,17 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
     public void OnMapStart(IOnMapLoadEvent _) => CheckHiddenSlots();
 
     [EventListener<EventDelegates.OnClientConnected>]
-    public HookResult OnPlayerConnect(IOnClientConnectedEvent @event)
+    public void OnPlayerConnect(IOnClientConnectedEvent @event)
     {
         IPlayer? player = Core.PlayerManager.GetPlayer(@event.PlayerId);
         if (player == null)
-            return HookResult.Continue;
+            return;
 
-        GlobalPlayerTime.TryAdd(player.SteamID, Core.Engine.GlobalVars.CurrentTime);
+        GlobalPlayerTime.TryAdd(player.UnauthorizedSteamID, Core.Engine.GlobalVars.CurrentTime);
 
         int reservedCount = reserved_slots.Value;
         if (reservedCount <= 0)
-            return HookResult.Continue;
+            return;
 
         int currentClients = GetClientCount();
         int limit = Core.Engine.GlobalVars.MaxClients - reservedCount;
@@ -78,14 +78,14 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
         bool hasPermission = Core.Permission.PlayerHasPermission(player.UnauthorizedSteamID, reserved_flag.Value);
 
         if (type == 2 && hasPermission)
-            AdminsSteamIds.Add(player.SteamID);
+            AdminsSteamIds.Add(player.UnauthorizedSteamID);
 
         if (currentClients <= limit)
         {
             if (hasPermission && hide_slots.Value)
                 SetVisibleMaxSlots(currentClients, limit);
 
-            return HookResult.Continue;
+            return;
         }
 
         if (hasPermission)
@@ -95,30 +95,19 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
                 case 0:
                     if (hide_slots.Value)
                         SetVisibleMaxSlots(currentClients, limit);
-                    return HookResult.Continue;
+                    return;
 
                 case 1:
-                    return ProcessKickLogic(player);
+                    ProcessKickLogic(player, ref @event);
+                    break;
 
-                case 2 when AdminsSteamIds.Count < reserve_maxadmins.Value || AdminsSteamIds.Contains(player.SteamID):
-                    return ProcessKickLogic(player);
+                case 2 when AdminsSteamIds.Count < reserve_maxadmins.Value || AdminsSteamIds.Contains(player.UnauthorizedSteamID):
+                    ProcessKickLogic(player, ref @event);
+                    break;
             }
         }
 
-        RejectIncomingPlayer(@event);
-        return HookResult.Stop;
-    }
-
-    private HookResult ProcessKickLogic(IPlayer incomingPlayer)
-    {
-        IPlayer? target = SelectKickClient(incomingPlayer);
-        if (target != null)
-        {
-            target.Kick("Kicked for reserved slot.", ENetworkDisconnectionReason.NETWORK_DISCONNECT_REJECT_RESERVED_FOR_LOBBY);
-            return HookResult.Continue;
-        }
-
-        return HookResult.Stop;
+        RejectIncomingPlayer(ref @event);
     }
 
     [GameEventHandler(HookMode.Post)]
@@ -159,7 +148,19 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
         }
     }
 
-    public void RejectIncomingPlayer(IOnClientConnectedEvent @event)
+    private void ProcessKickLogic(IPlayer incomingPlayer, ref IOnClientConnectedEvent @event)
+    {
+        IPlayer? target = SelectKickClient(incomingPlayer);
+        if (target != null)
+        {
+            target.Kick("Kicked for reserved slot.", ENetworkDisconnectionReason.NETWORK_DISCONNECT_REJECT_RESERVED_FOR_LOBBY);
+            return;
+        }
+
+        @event.Result = HookResult.Stop;
+    }
+
+    public void RejectIncomingPlayer(ref IOnClientConnectedEvent @event)
     {
         @event.Result = HookResult.Stop;
         CheckHiddenSlots();
@@ -196,7 +197,7 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
 
         foreach (var player in players)
         {
-            if (player.SteamID == incomingAdmin.SteamID)
+            if (player.SteamID == incomingAdmin.UnauthorizedSteamID)
                 continue;
 
             if (Core.Permission.PlayerHasPermission(player.SteamID, flag))
