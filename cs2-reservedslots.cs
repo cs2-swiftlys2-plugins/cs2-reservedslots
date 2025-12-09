@@ -13,7 +13,7 @@ using System.Collections.Concurrent;
 
 namespace ReservedSlots;
 
-[PluginMetadata(Id = "ReservedSlots", Version = "v2", Name = "ReservedSlots", Author = "schwarper")]
+[PluginMetadata(Id = "ReservedSlots", Version = "v3", Name = "ReservedSlots", Author = "schwarper")]
 public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
 {
     public IConVar<string> reserved_flag = null!;
