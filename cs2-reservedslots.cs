@@ -13,7 +13,7 @@ using System.Collections.Concurrent;
 
 namespace ReservedSlots;
 
-[PluginMetadata(Id = "ReservedSlots", Version = "v3", Name = "ReservedSlots", Author = "schwarper")]
+[PluginMetadata(Id = "ReservedSlots", Version = "v4", Name = "ReservedSlots", Author = "schwarper")]
 public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
 {
     public IConVar<string> reserved_flag = null!;
@@ -23,8 +23,6 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
     public IConVar<int> reserve_maxadmins = null!;
     public IConVar<int> reserve_kicktype = null!;
     public IConVar<int> sv_visiblemaxplayers = null!;
-
-    public ConcurrentDictionary<ulong, double> GlobalPlayerTime = [];
     public HashSet<ulong> AdminsSteamIds { get; set; } = [];
 
     private enum KickType
@@ -53,7 +51,6 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
     {
         ResetVisibleMax();
         AdminsSteamIds.Clear();
-        GlobalPlayerTime.Clear();
     }
 
     [EventListener<EventDelegates.OnMapLoad>]
@@ -65,8 +62,6 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
         IPlayer? player = Core.PlayerManager.GetPlayer(@event.PlayerId);
         if (player == null)
             return;
-
-        GlobalPlayerTime.TryAdd(player.UnauthorizedSteamID, Core.Engine.GlobalVars.CurrentTime);
 
         int reservedCount = reserved_slots.Value;
         if (reservedCount <= 0)
@@ -111,14 +106,13 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
     }
 
     [GameEventHandler(HookMode.Post)]
-    public HookResult OnClientDisconnect(EventPlayerConnectFull @event)
+    public HookResult OnClientDisconnect(EventPlayerDisconnect @event)
     {
         IPlayer? player = @event.UserIdPlayer;
         if (player == null) return HookResult.Continue;
 
         CheckHiddenSlots();
         AdminsSteamIds.Remove(player.SteamID);
-        GlobalPlayerTime.TryRemove(player.SteamID, out _);
 
         return HookResult.Continue;
     }
@@ -214,8 +208,7 @@ public sealed class ReservedSlots(ISwiftlyCore core) : BasePlugin(core)
                     value = player.Controller.Ping;
                     break;
                 case KickType.Kick_HighestTime:
-                    GlobalPlayerTime.TryGetValue(player.SteamID, out double connectTime);
-                    value = (float)(Core.Engine.GlobalVars.CurrentTime - connectTime);
+                    value = player.ConnectedTime;
                     break;
                 case KickType.Kick_Random:
                     value = Random.Shared.Next(0, 100);
